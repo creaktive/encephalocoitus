@@ -20,8 +20,7 @@ sub brainfuck ($;$) {
     my @code;
     my @loop;
     for my $instr (split //x => $program) {
-        my $i = $#code;
-        my $op = sub {}; # NOP
+        my $op;
         given ($instr) {
             when (q(>)) { $op = sub { ++$si } }
             when (q(<)) { $op = sub { --$si } }
@@ -29,9 +28,10 @@ sub brainfuck ($;$) {
             when (q(-)) { $op = sub { --vec $data, $si, $WORD_SIZE } }
             when (q(.)) { $op = sub { print chr vec $data, $si, $WORD_SIZE } }
             when (q(,)) { $op = sub { vec($data, $si, $WORD_SIZE) = ord getc } }
-            when (q([)) { push @loop => $i }
+            when (q([)) { push @loop => $#code }
             when (q(])) {
                 confess q(unmatched ']') unless @loop;
+                my $i = $#code;
                 my $j = pop @loop;
                 $code[$j + 1] = sub {
                     $ip =
