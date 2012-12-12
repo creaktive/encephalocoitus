@@ -4,6 +4,8 @@ use strict;
 use utf8;
 use warnings qw(all);
 
+use Carp qw(confess);
+
 sub brainfuck ($;$) {
     my ($program, $WORD_SIZE) = (@_, 8);
 
@@ -15,32 +17,35 @@ sub brainfuck ($;$) {
     my $data = '';
     my ($ip, $si) = (0, 0);
 
-    my @code = split //x => $program;
-
-    my @compiled;
-    my @stack;
-    for my $i (0 .. $#code) {
+    my @code;
+    my @loop;
+    for my $instr (split //x => $program) {
+        my $i = scalar @code;
         my $op = sub {}; # NOP
-        for ($code[$i]) {
+        given ($instr) {
             when (q(>)) { $op = sub { ++$si } }
             when (q(<)) { $op = sub { --$si } }
             when (q(+)) { $op = sub { ++vec $data, $si, $WORD_SIZE } }
             when (q(-)) { $op = sub { --vec $data, $si, $WORD_SIZE } }
             when (q(.)) { $op = sub { print chr vec $data, $si, $WORD_SIZE } }
             when (q(,)) { $op = sub { vec($data, $si, $WORD_SIZE) = ord getc } }
-            when (q([)) { push @stack => $i }
+            when (q([)) { push @loop => $i }
             when (q(])) {
-                my $j = pop @stack;
-                $compiled[$j] = sub { $ip = vec($data, $si, $WORD_SIZE) ? $ip : $i };
+                confess q(unmatched ']') unless @loop;
+                my $j = pop @loop;
+                $code[$j] = sub { $ip = vec($data, $si, $WORD_SIZE) ? $ip : $i };
                 $op = sub { $ip = $j - 1 };
+            } default {
+                next;
             }
         }
-        push @compiled => $op;
+        push @code => $op;
     }
+    confess q(unmatched '[') if @loop;
 
     my $c = 0;
-    while ($ip <= $#compiled) {
-        $compiled[$ip]->();
+    while ($ip <= $#code) {
+        $code[$ip]->();
     } continue {
         ++$c;
         ++$ip;
