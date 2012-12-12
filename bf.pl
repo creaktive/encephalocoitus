@@ -8,20 +8,21 @@ use constant DATA_SIZE => 65536;
 
 sub brainfuck ($) {
     my ($program) = @_;
+
     local ($|, $/) = (1, \1);
 
-    my @data = (0) x DATA_SIZE;
+    my $data = '';
     my (%start, %end);
     my ($ip, $si) = (0, 0);
 
     my $op = {
-        q(>) => sub { $si = ($si + 1) % @data },
-        q(<) => sub { $si = ($si - 1) % @data },
-        q(+) => sub { $data[$si] = ($data[$si] + 1) % (1 << WORD_SIZE) },
-        q(-) => sub { $data[$si] = ($data[$si] - 1) % (1 << WORD_SIZE) },
-        q(.) => sub { print STDOUT chr $data[$si] },
-        q(,) => sub { $data[$si] = ord <STDIN> },
-        q([) => sub { $ip = $data[$si] ? $ip : $end{$ip} },
+        q(>) => sub { ++$si },
+        q(<) => sub { --$si },
+        q(+) => sub { ++vec $data, $si, WORD_SIZE },
+        q(-) => sub { --vec $data, $si, WORD_SIZE },
+        q(.) => sub { print STDOUT chr vec $data, $si, WORD_SIZE },
+        q(,) => sub { vec($data, $si, WORD_SIZE) = ord <STDIN> },
+        q([) => sub { $ip = vec($data, $si, WORD_SIZE) ? $ip : $end{$ip} },
         q(]) => sub { $ip = $start{$ip} - 1 },
     };
 
@@ -38,6 +39,7 @@ sub brainfuck ($) {
 
     while ($ip <= $#code) {
         $op->{$code[$ip]}->();
+        $si %= DATA_SIZE;
     } continue {
         ++$ip;
     }
@@ -67,3 +69,4 @@ timethis 100 => sub {
 
 __DATA__
 timethis 100: 12 wallclock secs (12.14 usr +  0.03 sys = 12.17 CPU) @  8.22/s (n=100)
+timethis 100: 15 wallclock secs (15.11 usr +  0.03 sys = 15.14 CPU) @  6.61/s (n=100)
