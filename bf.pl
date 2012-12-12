@@ -1,4 +1,5 @@
 #!/usr/bin/env perl
+use 5.010;
 use strict;
 use utf8;
 use warnings qw(all);
@@ -12,35 +13,34 @@ sub brainfuck ($;$) {
     local ($|, $/) = (1, \1);
 
     my $data = '';
-    my (%start, %end);
     my ($ip, $si) = (0, 0);
 
-    my $op = {
-        q(>) => sub { ++$si },
-        q(<) => sub { --$si },
-        q(+) => sub { ++vec $data, $si, $WORD_SIZE },
-        q(-) => sub { --vec $data, $si, $WORD_SIZE },
-        q(.) => sub { print STDOUT chr vec $data, $si, $WORD_SIZE },
-        q(,) => sub { vec($data, $si, $WORD_SIZE) = ord <STDIN> },
-        q([) => sub { $ip = vec($data, $si, $WORD_SIZE) ? $ip : $end{$ip} },
-        q(]) => sub { $ip = $start{$ip} - 1 },
-    };
+    my @code = split //x => $program;
 
-    $program =~ s/[^\Q@{[ keys %$op ]}\E]//gox;
-    my @code = grep { exists $op->{$_} } split //x => $program;
-
+    my @compiled;
     my @stack;
     for my $i (0 .. $#code) {
-        if ($code[$i] eq q([)) {
-            push @stack => $i;
-        } elsif ($code[$i] eq q(])) {
-            $end{$start{$i} = pop @stack} = $i;
+        my $op = sub {}; # NOP
+        for ($code[$i]) {
+            when (q(>)) { $op = sub { ++$si } }
+            when (q(<)) { $op = sub { --$si } }
+            when (q(+)) { $op = sub { ++vec $data, $si, $WORD_SIZE } }
+            when (q(-)) { $op = sub { --vec $data, $si, $WORD_SIZE } }
+            when (q(.)) { $op = sub { print chr vec $data, $si, $WORD_SIZE } }
+            when (q(,)) { $op = sub { vec($data, $si, $WORD_SIZE) = ord getc } }
+            when (q([)) { push @stack => $i }
+            when (q(])) {
+                my $j = pop @stack;
+                $compiled[$j] = sub { $ip = vec($data, $si, $WORD_SIZE) ? $ip : $i };
+                $op = sub { $ip = $j - 1 };
+            }
         }
+        push @compiled => $op;
     }
 
     my $c = 0;
-    while ($ip <= $#code) {
-        $op->{$code[$ip]}->();
+    while ($ip <= $#compiled) {
+        $compiled[$ip]->();
     } continue {
         ++$c;
         ++$ip;
