@@ -15,59 +15,49 @@ sub brainfuck ($;$) {
     local ($|, $/) = (1, \1);
 
     my $data = '';
-    my ($ip, $si) = (0, 0);
+    my $si = 0;
 
     my @code;
     my @loop;
-    for my $instr (split //x => $program) {
-        my $op;
+    while ($program =~ /(([\Q><+-.,\E])(?:\2)*|.)/gsx) {
+        my $instr = substr $1, 0, 1;
+        my $n = length $1;
+
         given ($instr) {
-            when (q(>)) { $op = sub { ++$si } }
-            when (q(<)) { $op = sub { --$si } }
-            when (q(+)) { $op = sub { ++vec $data, $si, $WORD_SIZE } }
-            when (q(-)) { $op = sub { --vec $data, $si, $WORD_SIZE } }
-            when (q(.)) { $op = sub { print chr vec $data, $si, $WORD_SIZE } }
-            when (q(,)) { $op = sub { vec($data, $si, $WORD_SIZE) = ord getc } }
+            when (q(>)) { push @code => $n == 1 ? sub { ++$si } : sub { $si += $n } }
+            when (q(<)) { push @code => $n == 1 ? sub { --$si } : sub { $si -= $n } }
+            when (q(+)) { push @code => $n == 1 ? sub { ++vec $data, $si, $WORD_SIZE } : sub { vec($data, $si, $WORD_SIZE) += $n } }
+            when (q(-)) { push @code => $n == 1 ? sub { --vec $data, $si, $WORD_SIZE } : sub { vec($data, $si, $WORD_SIZE) -= $n } }
+            when (q(.)) { push @code => sub { print join '' => map { chr vec $data, $si, $WORD_SIZE } 1 .. $n } }
+            when (q(,)) { push @code => sub { vec($data, $si, $WORD_SIZE) = ord getc for 1 .. $n } }
             when (q([)) { push @loop => $#code }
             when (q(])) {
                 confess q(unmatched ']') unless @loop;
-                my $i = $#code;
-                my $j = pop @loop;
-                $code[$j + 1] = sub {
-                    $ip =
-                        vec($data, $si, $WORD_SIZE)
-                            ? $ip
-                            : $i + 1
+                my @sub = splice @code, 1 + pop @loop;
+                push @code => sub {
+                    while (vec $data, $si, $WORD_SIZE) {
+                        $_->() for @sub;
+                    }
                 };
-                $op = sub { $ip = $j };
-            } default {
-                next;
-            }
+            } default { next }
         }
-        push @code => $op;
     }
     confess q(unmatched '[') if @loop;
 
-    my $c = 0;
-    while ($ip <= $#code) {
-        $code[$ip]->();
-    } continue {
-        ++$c;
-        ++$ip;
-    }
+    $_->() for @code;
 
-    return $c;
+    return 1;
 }
 
 use Benchmark;
 
 timethis 100 => sub {
     # Hello World!
-    printf qq(%d\n), brainfuck
+    brainfuck
         q(++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.);
 
     # 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89
-    printf qq(\n%d\n), brainfuck << 'FIBONACCI';
+    brainfuck << 'FIBONACCI';
         +++++++++++
         >+>>>>++++++++++++++++++++++++++++++++++++++++++++
         >++++++++++++++++++++++++++++++++<<<<<<[>[>>>>>>+>
@@ -80,6 +70,7 @@ timethis 100 => sub {
         <<<<<<<<<<[>>>+>+<<<<-]>>>>[<<<<+>>>>-]<-[>>.>.<<<
         [-]]<<[>>+>+<<<-]>>>[<<<+>>>-]<<[<+>-]>[<+>-]<<<-]
 FIBONACCI
+    print "\n";
 };
 
 brainfuck << 'ROT13';
