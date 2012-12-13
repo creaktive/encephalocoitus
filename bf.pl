@@ -13,31 +13,60 @@ sub brainfuck ($;$) {
     use integer;
 
     local ($|, $/) = (1, \1);
-
     my ($data, $si) = ('', 0);
 
     my @code;
     my @loop;
-    while ($program =~ /(([\Q><+-.,\E])(?:\2)*|.)/gsx) {
+    while ($program =~ m{(([\Q><+-.,\E])(?:\2)*|.)}gsx) {
         my $instr = substr $1, 0, 1;
         my $n = length $1;
 
         given ($instr) {
-            when (q(>)) { push @code => $n == 1 ? sub { ++$si } : sub { $si += $n } }
-            when (q(<)) { push @code => $n == 1 ? sub { --$si } : sub { $si -= $n } }
-            when (q(+)) { push @code => $n == 1 ? sub { ++vec $data, $si, $WORD_SIZE } : sub { vec($data, $si, $WORD_SIZE) += $n } }
-            when (q(-)) { push @code => $n == 1 ? sub { --vec $data, $si, $WORD_SIZE } : sub { vec($data, $si, $WORD_SIZE) -= $n } }
-            when (q(.)) { push @code => sub { print join '' => map { chr vec $data, $si, $WORD_SIZE } 1 .. $n } }
-            when (q(,)) { push @code => sub { vec($data, $si, $WORD_SIZE) = ord getc for 1 .. $n } }
-            when (q([)) { push @loop => $#code }
-            when (q(])) {
+            when (q(>)) {
+                push @code
+                    => $n == 1
+                        ? sub { ++$si }
+                        : sub { $si += $n }
+            } when (q(<)) {
+                push @code
+                    => $n == 1
+                        ? sub { --$si }
+                        : sub { $si -= $n }
+            } when (q(+)) {
+                push @code
+                    => $n == 1
+                        ? sub { ++vec $data, $si, $WORD_SIZE }
+                        : sub { vec($data, $si, $WORD_SIZE) += $n }
+            } when (q(-)) {
+                push @code
+                    => $n == 1
+                        ? sub { --vec $data, $si, $WORD_SIZE }
+                        : sub { vec($data, $si, $WORD_SIZE) -= $n }
+            } when (q(.)) {
+                push @code
+                    => sub {
+                        print join ''
+                            => map
+                                { chr vec $data, $si, $WORD_SIZE }
+                                1 .. $n
+                    }
+            } when (q(,)) {
+                push @code
+                    => sub {
+                        vec($data, $si, $WORD_SIZE) = ord getc
+                            for 1 .. $n
+                    }
+            } when (q([)) {
+                push @loop => $#code
+            } when (q(])) {
                 confess q(unmatched ']') unless @loop;
                 my @sub = splice @code, 1 + pop @loop;
-                push @code => sub {
-                    while (vec $data, $si, $WORD_SIZE) {
-                        $_->() for @sub;
-                    }
-                };
+                push @code
+                    => sub {
+                        while (vec $data, $si, $WORD_SIZE) {
+                            $_->() for @sub;
+                        }
+                    };
             }
         }
     }
