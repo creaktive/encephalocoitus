@@ -14,8 +14,7 @@ sub brainfuck ($;$) {
 
     local ($|, $/) = (1, \1);
 
-    my $data = '';
-    my $si = 0;
+    my ($data, $si) = ('', 0);
 
     my @code;
     my @loop;
@@ -39,7 +38,7 @@ sub brainfuck ($;$) {
                         $_->() for @sub;
                     }
                 };
-            } default { next }
+            }
         }
     }
     confess q(unmatched '[') if @loop;
