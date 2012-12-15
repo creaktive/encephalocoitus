@@ -44,7 +44,7 @@ sub brainfuck2perl {
             my ($perl) = ($deparse->coderef2text($code) =~ m{^\{\s+(.+)\s+\}$}sx);
             my $vars = PadWalker::closed_over($code);
             $perl =~ s{\Q$_\E}{${$vars->{$_}}}gsx
-                for qw($WORD_SIZE $n);
+                for qw($WORD_SIZE $n $o);
 
             if (q(ARRAY) eq ref $vars->{q{@sub}}) {
                 my @perl = split m{\n\r?}x, $perl;
@@ -58,7 +58,7 @@ sub brainfuck2perl {
     };
     $translate->(0, $code);
 
-    return @buffer;
+    return \@buffer;
 }
 
 sub brainfuck {
@@ -100,11 +100,53 @@ sub brainfuck {
 
     my (@code, @loop);
     $program =~ s{[^><+\-\.,\[\]]+}{}gsx;
-    while ($program =~ m{(([><+\-])(?:\2)*|.)}gsx) {
+    while ($program =~ m{(
+        \[-\] |
+        ( [><+-] ) (?:\2)* |
+        ( \[ ( < (?:\++|(?-1)) > ) \- \] ) |
+        ( \[ \- ( > (?:\++|(?-1)) < ) \] ) |
+        .
+    )}gsx) {
         my $n = length $1;
+        ++$stats{vm_optimizations}{shrink}
+            if $n > 1;
 
         given ($2 // $1) {
-            when (q(>)) {
+            when (q([-])) {
+                ++$stats{vm_optimizations}->{clear};
+                push @code
+                    => sub { vec($data, $si, $WORD_SIZE) = 0 }
+            } when (m{\[(<+)(\++)>+\-\]}x) {
+                ++$stats{vm_optimizations}->{move_left};
+                $n = length $1;
+                my $o = length $2;
+                push @code
+                    => sub {
+                        (
+                            vec($data, $si - $n, $WORD_SIZE),
+                            vec($data, $si, $WORD_SIZE)
+                        ) = (
+                            vec($data, $si - $n, $WORD_SIZE)
+                                + vec($data, $si, $WORD_SIZE) * $o,
+                            0
+                        )
+                    }
+            } when (m{\[\-(>+)(\++)<+\]}x) {
+                ++$stats{vm_optimizations}->{move_right};
+                $n = length $1;
+                my $o = length $2;
+                push @code
+                    => sub {
+                        (
+                            vec($data, $si + $n, $WORD_SIZE),
+                            vec($data, $si, $WORD_SIZE)
+                        ) = (
+                            vec($data, $si + $n, $WORD_SIZE)
+                                + vec($data, $si, $WORD_SIZE) * $o,
+                            0
+                        )
+                    }
+            } when (q(>)) {
                 push @code
                     => $n == 1
                         ? sub { ++$si }
@@ -163,7 +205,7 @@ sub brainfuck {
     confess q(unmatched '[') if @loop;
 
     if ($to_perl) {
-        return brainfuck2perl(\@code);
+        return @{brainfuck2perl(\@code)};
     } else {
         for (@code) {
             ++$c; $_->();
@@ -182,4 +224,5 @@ open(my $fh, q(<:raw), $ARGV[0])
 close $fh;
 
 #say for brainfuck($program);
-brainfuck($program);
+my $stats = brainfuck($program);
+say STDERR Dumper $stats;
