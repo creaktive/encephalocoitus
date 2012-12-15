@@ -13,7 +13,7 @@ use Data::Dumper;
 use Getopt::Long;
 use Pod::Usage;
 
-## no critic (ProhibitStringyEval)
+## no critic (ProhibitComplexRegexes,ProhibitStringyEval)
 my $padwalker = eval q(use PadWalker; 1);
 $padwalker =
     ($@ or not defined $padwalker)
@@ -92,7 +92,10 @@ sub brainfuck2perl {
         q(),
     );
 
-    BEGIN { ($hint_bits, $warning_bits, $hinthash) = ($^H, ${^WARNING_BITS}, \%^H) }
+    BEGIN {
+        ($hint_bits, $warning_bits, $hinthash)
+            = ($^H, ${^WARNING_BITS}, \%^H)
+    }
     my $deparse = B::Deparse->new(q(-si0));
     $deparse->ambient_pragmas(
         hint_bits   => $hint_bits,
@@ -105,18 +108,20 @@ sub brainfuck2perl {
     $translate = sub {
         my ($indent, $ops) = @_;
         for my $code (@{$ops}) {
-            my ($perl) = ($deparse->coderef2text($code) =~ m{^\{\s+(.+)\s+\}$}sx);
-            my $vars = PadWalker::closed_over($code);
-            $perl =~ s{\Q$_\E}{${$vars->{$_}}}gsx
-                for qw($WORD_SIZE $n $o);
+            if ($deparse->coderef2text($code) =~ m{^\{\s+(.+)\s+\}$}sx) {
+                my $perl = $1;
+                my $vars = PadWalker::closed_over($code);
+                $perl =~ s{\Q$_\E}{${$vars->{$_}}}gsx
+                    for qw($WORD_SIZE $n $o);
 
-            if (q(ARRAY) eq ref $vars->{q{@sub}}) {
-                my @perl = split m{\n\r?}x, $perl;
-                push @buffer => (qq(\t) x $indent) . $perl[0];
-                $translate->($indent + 1, $vars->{q{@sub}});
-                push @buffer => (qq(\t) x $indent) . $perl[-1];
-            } else {
-                push @buffer => (qq(\t) x $indent) . $perl;
+                if (q(ARRAY) eq ref $vars->{q{@sub}}) {
+                    my @perl = split m{\n\r?}x, $perl;
+                    push @buffer => (qq(\t) x $indent) . $perl[0];
+                    $translate->($indent + 1, $vars->{q{@sub}});
+                    push @buffer => (qq(\t) x $indent) . $perl[-1];
+                } else {
+                    push @buffer => (qq(\t) x $indent) . $perl;
+                }
             }
         }
     };
@@ -204,24 +209,16 @@ sub brainfuck {
                     }
             } when (q(>)) {
                 push @code
-                    => $n == 1
-                        ? sub { ++$si }
-                        : sub { $si += $n }
+                    => sub { $si += $n }
             } when (q(<)) {
                 push @code
-                    => $n == 1
-                        ? sub { --$si }
-                        : sub { $si -= $n }
+                    => sub { $si -= $n }
             } when (q(+)) {
                 push @code
-                    => $n == 1
-                        ? sub { ++vec $data, $si, $WORD_SIZE }
-                        : sub { vec($data, $si, $WORD_SIZE) += $n }
+                    => sub { vec($data, $si, $WORD_SIZE) += $n }
             } when (q(-)) {
                 push @code
-                    => $n == 1
-                        ? sub { --vec $data, $si, $WORD_SIZE }
-                        : sub { vec($data, $si, $WORD_SIZE) -= $n }
+                    => sub { vec($data, $si, $WORD_SIZE) -= $n }
             } when (q(.)) {
                 push @code
                     => sub { print chr vec $data, $si, $WORD_SIZE }
@@ -273,6 +270,7 @@ sub brainfuck {
 }
 
 GetOptions(
+    q(cell=i)   => \my $cell,
     q(eval)     => \my $eval,
     q(help)     => \my $help,
     q(perl)     => \my $perl,
@@ -291,21 +289,25 @@ close $fh;
 my $start = Benchmark->new;
 
 if ($perl) {
-    say for brainfuck($program);
+    say for brainfuck($program, $cell);
 } elsif ($eval) {
-    my $code = join qq(\n) => brainfuck($program);
-    say STDERR qq(Compilation time:\n) . timediff(Benchmark->new, $start)->timestr
-        if $time;
+    my $code = join qq(\n) => brainfuck($program, $cell);
+    say STDERR
+        qq(Compilation time:\n)
+        . timediff(Benchmark->new, $start)->timestr
+            if $time;
 
     $start = Benchmark->new;
     my $ret = eval $code;
     croak qq(Couldn't execute: $@)
         if not defined $ret or $@;
 } else {
-    my $stats = brainfuck($program);
+    my $stats = brainfuck($program, $cell);
     say STDERR Dumper $stats
         if $debug;
 }
 
-say STDERR qq(\nExecution time:\n) . timediff(Benchmark->new, $start)->timestr
-    if $time;
+say STDERR
+    qq(\nExecution time:\n)
+    . timediff(Benchmark->new, $start)->timestr
+        if $time;
