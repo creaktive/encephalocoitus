@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# ABSTRACT: Yet Another BrainFuck Compiler
+# ABSTRACT: Yet Another BrainFuck Compiler in Perl
 # PODNAME: encephalocoitus
 use 5.010;
 use strict;
@@ -22,11 +22,13 @@ $padwalker =
 
 =head1 SYNOPSIS
 
-    encephalocoitus.pl [options] program.bf
+encephalocoitus.pl [options] program.bf
 
 =head1 DESCRIPTION
 
-...
+Slightly optimized BrainFuck compiler, also capable of BF-to-Perl translation.
+Initially translates BF to an array of C<sub { ... }> statements, which can
+be executed on-fly or deparsed via L<B::Deparse>/L<PadWalker>.
 
 =head1 OPTIONS
 
@@ -35,6 +37,11 @@ $padwalker =
 =item --help
 
 This.
+
+=item --cell
+
+Memory cell size, in bits.
+(default: 8)
 
 =item --debug
 
@@ -54,9 +61,27 @@ Executes compiled Perl code via L<perlfunc/eval>.
 
 =back
 
-=head1 SEE ALSO
+=head1 REFERENCES
 
-...
+=over 4
+
+=item *
+
+L<Acme::Brainfuck>
+
+=item *
+
+L<Language::BF>
+
+=item *
+
+L<Brainfuck page at esoteric programming languages wiki|http://esolangs.org/wiki/Brainfuck>
+
+=item *
+
+L<Optimizing BF interpreter programed with JavaScript|http://www.iwriteiam.nl/Ha_bf_online.html>
+
+=back
 
 =head1 AUTHOR
 
