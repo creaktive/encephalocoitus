@@ -1,4 +1,6 @@
 #!/usr/bin/env perl
+# ABSTRACT: Yet Another BrainFuck Compiler
+# PODNAME: encephalocoitus
 use 5.010;
 use strict;
 use utf8;
@@ -8,7 +10,37 @@ use B::Deparse;
 use Benchmark qw(:hireswallclock);
 use Carp qw(confess croak);
 use Data::Dumper;
+use Getopt::Long;
 use PadWalker;
+use Pod::Usage;
+
+=head1 SYNOPSIS
+
+    encephalocoitus.pl program.bf
+
+=head1 DESCRIPTION
+
+...
+
+=head1 OPTIONS
+
+=over 4
+
+=item --help
+
+This.
+
+=back
+
+=head1 SEE ALSO
+
+...
+
+=head1 AUTHOR
+
+Stanislaw Pusep
+
+=cut
 
 my ($hint_bits, $warning_bits, $hinthash);
 
@@ -73,16 +105,14 @@ sub brainfuck {
     local ($|, $/) = (1, \1);
     my ($data, $si, $int, $c) = ('', 0, 0, 0);
 
-    my ($start, %stats) = (Benchmark->new);
+    my %stats;
     my $update_stats = sub {
         @stats{qw{
             vm_ticks
             vm_mem
-            vm_time
         }} = (
             $c,
             length $data,
-            timediff(Benchmark->new, $start)->timestr
         );
 
         return \%stats;
@@ -216,13 +246,40 @@ sub brainfuck {
     }
 }
 
+GetOptions(
+    q(eval)     => \my $eval,
+    q(help)     => \my $help,
+    q(perl)     => \my $perl,
+    q(time)     => \my $time,
+    q(debug)    => \my $debug,
+) or pod2usage(-verbose => 1);
+pod2usage(-verbose => 2) if $help or 1 != @ARGV;
+
 my $program;
 
 open(my $fh, q(<:raw), $ARGV[0])
-    or croak qq(Can't open: $!);
+    or croak qq(Can't open $ARGV[0]: $!);
 { local $/ = undef; $program = <$fh> }
 close $fh;
 
-#say for brainfuck($program);
-my $stats = brainfuck($program);
-say STDERR Dumper $stats;
+my $start = Benchmark->new;
+
+if ($perl) {
+    say for brainfuck($program);
+} elsif ($eval) {
+    my $code = join qq(\n) => brainfuck($program);
+    say STDERR qq(Compilation time:\n) . timediff(Benchmark->new, $start)->timestr
+        if $time;
+
+    $start = Benchmark->new;
+    my $ret = eval $code; ## no critic (ProhibitStringyEval)
+    croak qq(Couldn't execute: $@)
+        if not defined $ret or $@;
+} else {
+    my $stats = brainfuck($program);
+    say STDERR Dumper $stats
+        if $debug;
+}
+
+say STDERR qq(\nExecution time:\n) . timediff(Benchmark->new, $start)->timestr
+    if $time;
