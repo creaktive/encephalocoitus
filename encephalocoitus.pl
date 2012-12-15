@@ -11,12 +11,18 @@ use Benchmark qw(:hireswallclock);
 use Carp qw(confess croak);
 use Data::Dumper;
 use Getopt::Long;
-use PadWalker;
 use Pod::Usage;
+
+## no critic (ProhibitStringyEval)
+my $padwalker = eval q(use PadWalker; 1);
+$padwalker =
+    ($@ or not defined $padwalker)
+        ? 0
+        : 1;
 
 =head1 SYNOPSIS
 
-    encephalocoitus.pl program.bf
+    encephalocoitus.pl [options] program.bf
 
 =head1 DESCRIPTION
 
@@ -30,6 +36,22 @@ use Pod::Usage;
 
 This.
 
+=item --debug
+
+Display compilation phase statistics.
+
+=item --time
+
+Compute and display host CPU usage statistics.
+
+=item --perl
+
+Output compiled Perl code to I<STDOUT>.
+
+=item --eval
+
+Executes compiled Perl code via L<perlfunc/eval>.
+
 =back
 
 =head1 SEE ALSO
@@ -38,7 +60,14 @@ This.
 
 =head1 AUTHOR
 
-Stanislaw Pusep
+Stanislaw Pusep <stas@sysd.org>
+
+=head1 COPYRIGHT AND LICENSE
+
+This software is copyright (c) 2012 by Stanislaw Pusep.
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
 
 =cut
 
@@ -49,6 +78,9 @@ sub brainfuck2perl {
 
     use bytes;
     use integer;
+
+    confess q(PadWalker is required for direct brainfuck-to-perl compilation)
+        unless $padwalker;
 
     my @buffer = (
         q(#!/usr/bin/perl),
@@ -138,6 +170,7 @@ sub brainfuck {
         .
     )}gsx) {
         my $n = length $1;
+        my $o;
         ++$stats{vm_optimizations}{shrink}
             if $n > 1;
 
@@ -148,23 +181,16 @@ sub brainfuck {
                     => sub { vec($data, $si, $WORD_SIZE) = 0 }
             } when (m{\[(<+)(\++)>+\-\]}x) {
                 ++$stats{vm_optimizations}->{move_left};
-                $n = length $1;
-                my $o = length $2;
-                push @code
-                    => sub {
-                        (
-                            vec($data, $si - $n, $WORD_SIZE),
-                            vec($data, $si, $WORD_SIZE)
-                        ) = (
-                            vec($data, $si - $n, $WORD_SIZE)
-                                + vec($data, $si, $WORD_SIZE) * $o,
-                            0
-                        )
-                    }
-            } when (m{\[\-(>+)(\++)<+\]}x) {
-                ++$stats{vm_optimizations}->{move_right};
-                $n = length $1;
-                my $o = length $2;
+                $n = -length $1;
+                $o = length $2;
+                continue;
+            } when (m{\[\-(>+)(\++)<+\]}x or $n < 0) {
+                if ($n > 0) {
+                    ++$stats{vm_optimizations}->{move_right};
+                    $n = length $1;
+                    $o = length $2;
+                }
+
                 push @code
                     => sub {
                         (
@@ -272,7 +298,7 @@ if ($perl) {
         if $time;
 
     $start = Benchmark->new;
-    my $ret = eval $code; ## no critic (ProhibitStringyEval)
+    my $ret = eval $code;
     croak qq(Couldn't execute: $@)
         if not defined $ret or $@;
 } else {
